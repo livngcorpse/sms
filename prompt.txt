@@ -1,0 +1,57 @@
+You are assisting a college student in building a beginner-level Machine Learning
+project that must strictly stay within the Machine Learning Lab syllabus.
+
+Project Title:
+Real-Time Spam Message Classification Using Machine Learning
+
+Critical Constraints:
+- Do NOT include any sample dataset in the output.
+- Do NOT hardcode sample data or example messages.
+- The system must be designed to work with real-time or user-provided SMS text.
+- Use only machine learning concepts that exist in the syllabus.
+- Avoid advanced NLP or deep learning techniques.
+
+Allowed Concepts (Strict):
+- Data preprocessing techniques
+- Naïve Bayes Classification
+- Logistic Regression (optional comparison)
+- Basic model evaluation metrics
+
+Disallowed Concepts:
+- Deep learning models
+- Transformers or pretrained models
+- Word embeddings (Word2Vec, GloVe, etc.)
+- Any advanced NLP terminology
+
+Dataset Instructions:
+- Use any publicly available dataset related to SMS spam classification ONLY for training.
+- Do not display, embed, or hardcode dataset samples in the final output.
+- Treat the dataset as an external input used only during model training.
+
+Functional Requirements:
+1. Implement basic text preprocessing (lowercasing, removing punctuation, stopwords).
+2. Convert text into numerical features using Bag of Words or TF-IDF.
+3. Train a Naïve Bayes classifier.
+4. Optionally compare performance with Logistic Regression.
+5. After training, allow the model to accept real-time user input (single SMS text)
+   and classify it as Spam or Not Spam.
+6. Ensure the system can be reused with new messages without retraining.
+
+Evaluation:
+- Use accuracy, precision, recall, and confusion matrix during training.
+- For real-time input, display only the predicted class (Spam / Not Spam).
+
+Output Format:
+- Problem statement
+- System workflow explanation
+- Model training description (no dataset samples)
+- Real-time prediction mechanism
+- Results and evaluation
+- Conclusion and future scope (within syllabus only)
+
+Tools:
+- Python
+- Pandas
+- NumPy
+- Scikit-learn
+- NLTK
