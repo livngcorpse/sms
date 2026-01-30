@@ -9,7 +9,7 @@ echo "=========================================="
 echo ""
 
 # Check if Python is installed
-if ! command -v python3 &> /dev/null; then
+if ! command -v python &> /dev/null; then
     echo "❌ Python 3 is not installed. Please install Python 3.7 or higher."
     exit 1
 fi
@@ -28,7 +28,7 @@ echo ""
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-pip3 install -r requirements_web.txt
+pip3 install -r requirements.txt
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to install dependencies"
@@ -40,7 +40,7 @@ echo ""
 
 # Download NLTK data
 echo "📚 Downloading NLTK data..."
-python3 -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords')"
+python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords')"
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to download NLTK data"
@@ -76,4 +76,4 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Run the Flask app
-python3 app.py
+python app.py
