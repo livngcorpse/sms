@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Spam Classifier - Real-Time ML Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="grid-bg"></div>
+    
+    <div class="container">
+        <!-- Header Section -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="5" y="10" width="40" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <path d="M 5 15 L 25 25 L 45 15" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="35" cy="25" r="8" fill="var(--accent-red)" opacity="0.8"/>
+                            <line x1="31" y1="21" x2="39" y2="29" stroke="white" stroke-width="2"/>
+                            <line x1="39" y1="21" x2="31" y2="29" stroke="white" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="title">SPAM CLASSIFIER</h1>
+                        <p class="subtitle">Real-Time Machine Learning Dashboard</p>
+                    </div>
+                </div>
+                <div class="status-badge" id="systemStatus">
+                    <div class="status-dot"></div>
+                    <span>SYSTEM IDLE</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Control Panel -->
+        <section class="panel control-panel">
+            <div class="panel-header">
+                <h2>Model Control</h2>
+                <div class="panel-actions">
+                    <button id="trainBtn" class="btn btn-primary">
+                        <span class="btn-icon">▶</span>
+                        Train Model
+                    </button>
+                    <button id="resetBtn" class="btn btn-secondary">
+                        <span class="btn-icon">↻</span>
+                        Reset
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Training Progress -->
+            <div id="trainingSection" class="training-section hidden">
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span id="currentStep">Initializing...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                </div>
+                
+                <!-- Metrics Display -->
+                <div id="metricsDisplay" class="metrics-grid hidden">
+                    <div class="metric-card">
+                        <div class="metric-label">Naive Bayes</div>
+                        <div class="metric-value" id="nbAccuracy">--.--</div>
+                        <div class="metric-unit">accuracy</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Logistic Regression</div>
+                        <div class="metric-value" id="lrAccuracy">--.--</div>
+                        <div class="metric-unit">accuracy</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Prediction Interface -->
+        <section class="panel prediction-panel">
+            <div class="panel-header">
+                <h2>Real-Time Prediction</h2>
+            </div>
+            
+            <div class="prediction-input-section">
+                <div class="input-group">
+                    <label for="messageInput">Enter SMS Message</label>
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="Type or paste an SMS message here to classify it as spam or not spam..."
+                        rows="4"
+                    ></textarea>
+                </div>
+                
+                <div class="button-row">
+                    <button id="predictBtn" class="btn btn-predict" disabled>
+                        <span class="btn-icon">🔍</span>
+                        Classify Message
+                    </button>
+                    <button id="clearBtn" class="btn btn-secondary">Clear</button>
+                </div>
+                
+                <!-- Quick Test Messages -->
+                <div class="quick-tests">
+                    <p class="quick-test-label">Quick Test Messages:</p>
+                    <div class="quick-test-buttons">
+                        <button class="btn-quick-test" data-message="Congratulations! You've won a $1000 gift card! Click here to claim now!">Spam Example</button>
+                        <button class="btn-quick-test" data-message="Hey, are we still meeting for lunch tomorrow at 1pm?">Ham Example</button>
+                        <button class="btn-quick-test" data-message="URGENT: Your account will be suspended. Verify your password immediately!">Phishing Example</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Prediction Results -->
+            <div id="predictionResults" class="prediction-results hidden">
+                <div class="result-header">Classification Results</div>
+                <div class="result-grid">
+                    <div class="result-card nb-result">
+                        <div class="result-model">Naive Bayes</div>
+                        <div class="result-classification" id="nbResult">-</div>
+                        <div class="result-confidence">
+                            <span>Confidence:</span>
+                            <span id="nbConfidence" class="confidence-value">--%</span>
+                        </div>
+                    </div>
+                    <div class="result-card lr-result">
+                        <div class="result-model">Logistic Regression</div>
+                        <div class="result-classification" id="lrResult">-</div>
+                        <div class="result-confidence">
+                            <span>Confidence:</span>
+                            <span id="lrConfidence" class="confidence-value">--%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Logs Panel -->
+        <section class="panel logs-panel">
+            <div class="panel-header">
+                <h2>Training Logs</h2>
+                <button id="clearLogsBtn" class="btn btn-small">Clear Logs</button>
+            </div>
+            <div id="logsContainer" class="logs-container">
+                <div class="log-placeholder">No logs yet. Train the model to see output.</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
