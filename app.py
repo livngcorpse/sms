@@ -1,204 +1,185 @@
 """
-Flask Web Application for Real-Time Spam Message Classification
-Provides API endpoints for model training, prediction, and status monitoring
+Flask Web Application — Two-Phase Spam Classifier
+Phase 1: Pre-train on base dataset (saved to disk)
+Phase 2: Live retrain on second dataset (in-browser upload)
+Phase 3: Real-time prediction
 """
 
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
-import json
-import time
-import sys
-from io import StringIO
 import threading
-from spam_classifier import SpamClassifier, load_sms_data, preprocess_text
 import traceback
+import sys
+import os
+from spam_classifier import SpamClassifier
 
 app = Flask(__name__)
 CORS(app)
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Global variables for managing training state
 classifier = SpamClassifier()
-training_status = {
-    'is_training': False,
-    'is_trained': False,
+
+state = {
+    'phase': 'idle',          # idle | pretraining | pretrained | live_training | live_trained
     'progress': 0,
     'current_step': '',
     'logs': [],
     'error': None,
-    'metrics': {}
+    'pretrain_metrics': {},
+    'live_metrics': {},
 }
-training_lock = threading.Lock()
+lock = threading.Lock()
 
-class LogCapture:
-    """Capture print statements during training"""
-    def __init__(self):
-        self.logs = []
-        self.original_stdout = sys.stdout
-        
-    def write(self, text):
-        if text.strip():
-            self.logs.append(text.strip())
-            self.original_stdout.write(text)
-    
-    def flush(self):
-        self.original_stdout.flush()
-    
-    def get_logs(self):
-        return self.logs
 
-def train_model_thread():
-    """Background thread for model training"""
-    global training_status, classifier
-    
-    log_capture = LogCapture()
-    sys.stdout = log_capture
-    
+def _log(msg, pct):
+    state['current_step'] = msg
+    state['progress'] = pct
+    state['logs'].append(msg)
+
+
+# ── Auto-load pretrained model on startup ──────────────────────────────────
+if classifier.load_pretrained():
+    state['phase'] = 'pretrained'
+    state['current_step'] = 'Pretrained model loaded from disk.'
+    state['progress'] = 100
+
+
+# ── Background threads ────────────────────────────────────────────────────
+def _pretrain_thread(filepath):
     try:
-        with training_lock:
-            training_status['is_training'] = True
-            training_status['progress'] = 0
-            training_status['current_step'] = 'Starting training...'
-            training_status['logs'] = []
-            training_status['error'] = None
-        
-        # Step 1: Load data
-        training_status['current_step'] = 'Loading SMS dataset...'
-        training_status['progress'] = 10
-        time.sleep(0.5)
-        
-        # Step 2: Preprocessing
-        training_status['current_step'] = 'Preprocessing text data...'
-        training_status['progress'] = 30
-        time.sleep(0.5)
-        
-        # Step 3: Feature extraction
-        training_status['current_step'] = 'Extracting features using TF-IDF...'
-        training_status['progress'] = 50
-        time.sleep(0.5)
-        
-        # Step 4: Training
-        training_status['current_step'] = 'Training Naive Bayes classifier...'
-        training_status['progress'] = 70
-        
-        # Actual training
-        nb_accuracy, lr_accuracy = classifier.train()
-        
-        # Step 5: Evaluation
-        training_status['current_step'] = 'Training Logistic Regression...'
-        training_status['progress'] = 90
-        time.sleep(0.5)
-        
-        # Complete
-        training_status['is_trained'] = True
-        training_status['progress'] = 100
-        training_status['current_step'] = 'Training completed successfully!'
-        training_status['metrics'] = {
-            'naive_bayes_accuracy': float(nb_accuracy),
-            'logistic_regression_accuracy': float(lr_accuracy)
-        }
-        training_status['logs'] = log_capture.get_logs()
-        
+        state['phase'] = 'pretraining'
+        state['logs'] = []
+        state['error'] = None
+        metrics = classifier.pretrain(filepath, progress_callback=_log)
+        state['pretrain_metrics'] = metrics
+        state['phase'] = 'pretrained'
     except Exception as e:
-        training_status['error'] = str(e)
-        training_status['current_step'] = f'Error: {str(e)}'
-        training_status['logs'] = log_capture.get_logs()
-        training_status['logs'].append(f"ERROR: {traceback.format_exc()}")
-    
+        state['error'] = str(e)
+        state['phase'] = 'idle'
+        state['logs'].append(f"ERROR: {traceback.format_exc()}")
     finally:
-        sys.stdout = log_capture.original_stdout
-        training_status['is_training'] = False
+        # Clean up uploaded file
+        try:
+            os.remove(filepath)
+        except Exception:
+            pass
 
+
+def _live_train_thread(filepath):
+    try:
+        state['phase'] = 'live_training'
+        state['logs'] = []
+        state['error'] = None
+        metrics = classifier.live_train(filepath, progress_callback=_log)
+        state['live_metrics'] = metrics
+        state['phase'] = 'live_trained'
+    except Exception as e:
+        state['error'] = str(e)
+        state['phase'] = 'pretrained'
+        state['logs'].append(f"ERROR: {traceback.format_exc()}")
+    finally:
+        try:
+            os.remove(filepath)
+        except Exception:
+            pass
+
+
+# ── Routes ────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
-    """Serve the main web interface"""
     return render_template('index.html')
 
-@app.route('/api/train', methods=['POST'])
-def train():
-    """Start model training"""
-    global training_status
-    
-    if training_status['is_training']:
-        return jsonify({'error': 'Training already in progress'}), 400
-    
-    if training_status['is_trained']:
-        return jsonify({'message': 'Model already trained. Retraining...'}), 200
-    
-    # Start training in background thread
-    thread = threading.Thread(target=train_model_thread)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({'message': 'Training started'}), 200
 
-@app.route('/api/status', methods=['GET'])
+@app.route('/api/status')
 def status():
-    """Get current training status"""
-    return jsonify(training_status)
+    return jsonify({
+        **state,
+        'is_trained': classifier.is_trained,
+        'model_phase': classifier.phase,
+        'pretrained_exists': classifier.pretrained_model_exists(),
+    })
+
+
+@app.route('/api/pretrain', methods=['POST'])
+def pretrain():
+    if state['phase'] in ('pretraining', 'live_training'):
+        return jsonify({'error': 'Training in progress'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+
+    save_path = os.path.join(UPLOAD_FOLDER, 'pretrain_dataset' + os.path.splitext(f.filename)[1])
+    f.save(save_path)
+
+    t = threading.Thread(target=_pretrain_thread, args=(save_path,))
+    t.daemon = True
+    t.start()
+    return jsonify({'message': 'Pre-training started'}), 200
+
+
+@app.route('/api/live_train', methods=['POST'])
+def live_train():
+    if state['phase'] in ('pretraining', 'live_training'):
+        return jsonify({'error': 'Training in progress'}), 400
+
+    if not classifier.is_trained:
+        return jsonify({'error': 'Pre-train the model first'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+
+    save_path = os.path.join(UPLOAD_FOLDER, 'live_dataset' + os.path.splitext(f.filename)[1])
+    f.save(save_path)
+
+    t = threading.Thread(target=_live_train_thread, args=(save_path,))
+    t.daemon = True
+    t.start()
+    return jsonify({'message': 'Live training started'}), 200
+
 
 @app.route('/api/predict', methods=['POST'])
 def predict():
-    """Predict if a message is spam"""
-    global classifier, training_status
-    
-    if not training_status['is_trained']:
-        return jsonify({'error': 'Model not trained yet. Please train the model first.'}), 400
-    
+    if not classifier.is_trained:
+        return jsonify({'error': 'Model not trained yet'}), 400
+
     data = request.get_json()
-    message = data.get('message', '')
-    
+    message = (data or {}).get('message', '').strip()
     if not message:
         return jsonify({'error': 'No message provided'}), 400
-    
+
     try:
         result = classifier.predict(message)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/batch-predict', methods=['POST'])
-def batch_predict():
-    """Predict multiple messages at once"""
-    global classifier, training_status
-    
-    if not training_status['is_trained']:
-        return jsonify({'error': 'Model not trained yet. Please train the model first.'}), 400
-    
-    data = request.get_json()
-    messages = data.get('messages', [])
-    
-    if not messages:
-        return jsonify({'error': 'No messages provided'}), 400
-    
-    try:
-        results = []
-        for msg in messages:
-            result = classifier.predict(msg)
-            results.append(result)
-        return jsonify({'results': results}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reset', methods=['POST'])
 def reset():
-    """Reset the training status"""
-    global training_status, classifier
-    
-    if training_status['is_training']:
-        return jsonify({'error': 'Cannot reset while training is in progress'}), 400
-    
-    training_status = {
-        'is_training': False,
-        'is_trained': False,
-        'progress': 0,
-        'current_step': '',
-        'logs': [],
-        'error': None,
-        'metrics': {}
-    }
+    global classifier
+    if state['phase'] in ('pretraining', 'live_training'):
+        return jsonify({'error': 'Cannot reset during training'}), 400
+
     classifier = SpamClassifier()
-    
-    return jsonify({'message': 'Reset successful'}), 200
+    state.update({
+        'phase': 'idle', 'progress': 0, 'current_step': '',
+        'logs': [], 'error': None,
+        'pretrain_metrics': {}, 'live_metrics': {},
+    })
+    # Remove saved model
+    if os.path.exists('pretrained_model.pkl'):
+        os.remove('pretrained_model.pkl')
+    return jsonify({'message': 'Reset complete'}), 200
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

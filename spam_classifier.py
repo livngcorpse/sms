@@ -1,261 +1,264 @@
 """
 Real-Time Spam Message Classification Using Machine Learning
-
-This project implements a real-time spam message classifier using only concepts
-from the Machine Learning Lab syllabus:
-- Data preprocessing
-- Naïve Bayes Classification
-- Logistic Regression
-- Basic model evaluation
-
-Author: College Student
-Course: Machine Learning Lab
+Supports: pre-trained model loading + live retraining on a second dataset
 """
 
 import pandas as pd
 import numpy as np
 import nltk
 import re
+import pickle
+import os
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import warnings
 warnings.filterwarnings('ignore')
 
 # Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-try:
-    nltk.data.find('tokenizers/punkt_tab')
-except LookupError:
-    nltk.download('punkt_tab')
-
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-
-def load_sms_data():
-    """
-    Load SMS spam dataset from a public source.
-    The dataset should be in the current directory as 'SMSSpamCollection' file.
-    """
+for resource in [('tokenizers/punkt', 'punkt'),
+                 ('tokenizers/punkt_tab', 'punkt_tab'),
+                 ('corpora/stopwords', 'stopwords')]:
     try:
-        # Try to load the standard SMS Spam Collection dataset
-        df = pd.read_csv('SMSSpamCollection', sep='\t', names=['label', 'message'])
-        print("Loaded SMS Spam Collection dataset")
-        return df
-    except FileNotFoundError:
-        print("Error: SMSSpamCollection file not found in the current directory.")
-        print("Please download the SMS Spam Collection dataset and place it in the current directory.")
-        print("The dataset can be found at: https://archive.ics.uci.edu/ml/datasets/sms+spam+collection")
-        exit(1)
+        nltk.data.find(resource[0])
+    except LookupError:
+        nltk.download(resource[1])
+
+PRETRAINED_MODEL_PATH = 'pretrained_model.pkl'
+
 
 def preprocess_text(text):
-    """
-    Preprocess text data using allowed techniques from the syllabus:
-    - Convert to lowercase
-    - Remove special characters and digits
-    - Remove stopwords
-    - Tokenization is handled by the vectorizer
-    """
-    # Convert to lowercase
-    text = text.lower()
-    
-    # Remove special characters and digits, keep only letters and spaces
+    text = str(text).lower()
     text = re.sub(r'[^a-zA-Z\s]', '', text)
-    
-    # Remove extra whitespaces
     text = ' '.join(text.split())
-    
-    # Remove stopwords using NLTK
     stop_words = set(stopwords.words('english'))
-    word_tokens = word_tokenize(text)
-    filtered_text = [word for word in word_tokens if word not in stop_words]
-    
-    return ' '.join(filtered_text)
+    tokens = word_tokenize(text)
+    filtered = [w for w in tokens if w not in stop_words]
+    return ' '.join(filtered)
 
-def classify_sms_real_time(message, vectorizer, nb_classifier, lr_classifier):
+
+def load_dataset(filepath):
     """
-    Function to classify a single SMS message in real-time
-    
-    Parameters:
-    - message: The SMS text to classify
-    - vectorizer: The fitted TF-IDF vectorizer
-    - nb_classifier: The trained Naive Bayes classifier
-    - lr_classifier: The trained Logistic Regression classifier
-    
-    Returns:
-    - Dictionary with classification results
+    Flexible dataset loader. Supports:
+    - SMSSpamCollection (tab-separated, no header)
+    - CSV with 'label' and 'message' (or 'text') columns
+    - CSV with 'v1' and 'v2' columns (Kaggle format)
     """
-    processed_msg = preprocess_text(message)
-    msg_vector = vectorizer.transform([processed_msg])
-    
-    nb_pred = nb_classifier.predict(msg_vector)[0]
-    nb_prob = nb_classifier.predict_proba(msg_vector)[0]
-    
-    lr_pred = lr_classifier.predict(msg_vector)[0]
-    lr_prob = lr_classifier.predict_proba(msg_vector)[0]
-    
-    nb_result = 'Spam' if nb_pred == 1 else 'Not Spam'
-    lr_result = 'Spam' if lr_pred == 1 else 'Not Spam'
-    
-    return {
-        'message': message,
-        'naive_bayes_result': nb_result,
-        'logistic_regression_result': lr_result,
-        'naive_bayes_confidence': max(nb_prob),
-        'logistic_regression_confidence': max(lr_prob)
-    }
+    ext = os.path.splitext(filepath)[1].lower()
+
+    if ext == '' or ext == '.txt':
+        # Tab-separated, no header (UCI format)
+        df = pd.read_csv(filepath, sep='\t', names=['label', 'message'])
+    else:
+        df = pd.read_csv(filepath, encoding='latin-1')
+        # Normalize column names
+        df.columns = [c.strip().lower() for c in df.columns]
+        if 'v1' in df.columns and 'v2' in df.columns:
+            df = df.rename(columns={'v1': 'label', 'v2': 'message'})
+        elif 'text' in df.columns and 'label' not in df.columns:
+            # Try to find label column
+            for col in df.columns:
+                if df[col].nunique() <= 3:
+                    df = df.rename(columns={col: 'label', 'text': 'message'})
+                    break
+        # Keep only label + message
+        df = df[['label', 'message']].copy()
+
+    # Normalize labels
+    df['label'] = df['label'].str.strip().str.lower()
+    df = df[df['label'].isin(['spam', 'ham'])].copy()
+    df['label_num'] = df['label'].map({'ham': 0, 'spam': 1})
+    return df
 
 
 class SpamClassifier:
-    """
-    A class to encapsulate the spam classification system
-    """
     def __init__(self):
         self.vectorizer = None
         self.nb_classifier = None
         self.lr_classifier = None
         self.is_trained = False
-    
-    def train(self):
-        """
-        Train the spam classification models
-        """
-        print("Loading SMS dataset...")
-        df = load_sms_data()
-        print(f"Dataset shape: {df.shape}")
-        print(f"Class distribution:\n{df['label'].value_counts()}")
-        
-        print("\nPreprocessing text data...")
-        df['processed_message'] = df['message'].apply(preprocess_text)
-        
-        print("\nFeature extraction using TF-IDF...")
+        self.phase = None  # 'pretrained' or 'live'
+
+    # ------------------------------------------------------------------
+    # PHASE 1 — build & save pretrained model from base dataset
+    # ------------------------------------------------------------------
+    def pretrain(self, filepath, progress_callback=None):
+        def log(msg, pct):
+            print(msg)
+            if progress_callback:
+                progress_callback(msg, pct)
+
+        log("Loading base dataset...", 5)
+        df = load_dataset(filepath)
+        log(f"Dataset loaded: {len(df)} messages  |  spam={df['label_num'].sum()}  ham={(df['label_num']==0).sum()}", 15)
+
+        log("Preprocessing text...", 25)
+        df['processed'] = df['message'].apply(preprocess_text)
+
+        log("Extracting TF-IDF features...", 40)
         self.vectorizer = TfidfVectorizer(max_features=3000)
-        X = self.vectorizer.fit_transform(df['processed_message'])
-        y = df['label'].map({'ham': 0, 'spam': 1})
-        
-        print(f"Feature matrix shape: {X.shape}")
-        
-        print("\nSplitting dataset...")
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-        print(f"Training set size: {X_train.shape[0]}")
-        print(f"Testing set size: {X_test.shape[0]}")
-        
-        print("\nTraining Naïve Bayes classifier...")
+        X = self.vectorizer.fit_transform(df['processed'])
+        y = df['label_num']
+
+        log("Splitting dataset (80/20)...", 50)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y)
+
+        log("Training Naive Bayes...", 65)
         self.nb_classifier = MultinomialNB()
         self.nb_classifier.fit(X_train, y_train)
-        
-        nb_y_pred = self.nb_classifier.predict(X_test)
-        nb_accuracy = accuracy_score(y_test, nb_y_pred)
-        
-        print(f"Naive Bayes Accuracy: {nb_accuracy:.4f}")
-        
-        print("\nTraining Logistic Regression for comparison...")
+        nb_pred = self.nb_classifier.predict(X_test)
+        nb_acc = accuracy_score(y_test, nb_pred)
+        nb_prec = precision_score(y_test, nb_pred)
+        nb_rec = recall_score(y_test, nb_pred)
+
+        log("Training Logistic Regression...", 80)
         self.lr_classifier = LogisticRegression(random_state=42, max_iter=1000)
         self.lr_classifier.fit(X_train, y_train)
-        
-        lr_y_pred = self.lr_classifier.predict(X_test)
-        lr_accuracy = accuracy_score(y_test, lr_y_pred)
-        
-        print(f"Logistic Regression Accuracy: {lr_accuracy:.4f}")
-        
-        print("\nModel evaluation:")
-        print(f"Naive Bayes Accuracy: {accuracy_score(y_test, nb_y_pred):.4f}")
-        print(f"Naive Bayes Precision: {precision_score(y_test, nb_y_pred):.4f}")
-        print(f"Naive Bayes Recall: {recall_score(y_test, nb_y_pred):.4f}")
-        print(f"Logistic Regression Accuracy: {accuracy_score(y_test, lr_y_pred):.4f}")
-        print(f"Logistic Regression Precision: {precision_score(y_test, lr_y_pred):.4f}")
-        print(f"Logistic Regression Recall: {recall_score(y_test, lr_y_pred):.4f}")
-        
+        lr_pred = self.lr_classifier.predict(X_test)
+        lr_acc = accuracy_score(y_test, lr_pred)
+        lr_prec = precision_score(y_test, lr_pred)
+        lr_rec = recall_score(y_test, lr_pred)
+
+        log(f"Naive Bayes     → Accuracy: {nb_acc:.4f}  Precision: {nb_prec:.4f}  Recall: {nb_rec:.4f}", 90)
+        log(f"Logistic Regr.  → Accuracy: {lr_acc:.4f}  Precision: {lr_prec:.4f}  Recall: {lr_rec:.4f}", 95)
+
         self.is_trained = True
-        print("\nTraining completed. Models are ready for real-time prediction.")
-        
-        return nb_accuracy, lr_accuracy
-    
-    def predict(self, message):
-        """
-        Predict if a message is spam or not
-        """
+        self.phase = 'pretrained'
+
+        log("Saving pretrained model to disk...", 98)
+        self._save_model()
+
+        log("Pre-training complete. Model saved.", 100)
+        return {
+            'nb_accuracy': float(nb_acc),
+            'lr_accuracy': float(lr_acc),
+            'nb_precision': float(nb_prec),
+            'lr_precision': float(lr_prec),
+            'nb_recall': float(nb_rec),
+            'lr_recall': float(lr_rec),
+            'dataset_size': len(df),
+            'spam_count': int(df['label_num'].sum()),
+            'ham_count': int((df['label_num'] == 0).sum()),
+        }
+
+    # ------------------------------------------------------------------
+    # PHASE 2 — live retrain on a second dataset (updates weights)
+    # ------------------------------------------------------------------
+    def live_train(self, filepath, progress_callback=None):
+        def log(msg, pct):
+            print(msg)
+            if progress_callback:
+                progress_callback(msg, pct)
+
         if not self.is_trained:
-            raise Exception("Model must be trained first")
+            raise Exception("Load or build a pretrained model first.")
+
+        log("Loading live dataset...", 5)
+        df = load_dataset(filepath)
+        log(f"Live dataset: {len(df)} messages  |  spam={df['label_num'].sum()}  ham={(df['label_num']==0).sum()}", 15)
+
+        log("Preprocessing text...", 25)
+        df['processed'] = df['message'].apply(preprocess_text)
+
+        log("Transforming with existing TF-IDF vocabulary...", 40)
+        # Use the SAME vectorizer (fitted on base data) so vocabulary is consistent
+        X = self.vectorizer.transform(df['processed'])
+        y = df['label_num']
+
+        log("Splitting dataset (80/20)...", 50)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y)
+
+        log("Updating Naive Bayes with new data...", 65)
+        # partial_fit allows incremental learning on top of previous weights
+        self.nb_classifier.partial_fit(X_train, y_train, classes=np.array([0, 1]))
+        nb_pred = self.nb_classifier.predict(X_test)
+        nb_acc = accuracy_score(y_test, nb_pred)
+        nb_prec = precision_score(y_test, nb_pred)
+        nb_rec = recall_score(y_test, nb_pred)
+
+        log("Updating Logistic Regression with new data...", 80)
+        self.lr_classifier.fit(X_train, y_train)
+        lr_pred = self.lr_classifier.predict(X_test)
+        lr_acc = accuracy_score(y_test, lr_pred)
+        lr_prec = precision_score(y_test, lr_pred)
+        lr_rec = recall_score(y_test, lr_pred)
+
+        log(f"Naive Bayes     → Accuracy: {nb_acc:.4f}  Precision: {nb_prec:.4f}  Recall: {nb_rec:.4f}", 90)
+        log(f"Logistic Regr.  → Accuracy: {lr_acc:.4f}  Precision: {lr_prec:.4f}  Recall: {lr_rec:.4f}", 95)
+
+        self.phase = 'live'
+        log("Live training complete. Model updated in memory.", 100)
+
+        return {
+            'nb_accuracy': float(nb_acc),
+            'lr_accuracy': float(lr_acc),
+            'nb_precision': float(nb_prec),
+            'lr_precision': float(lr_prec),
+            'nb_recall': float(nb_rec),
+            'lr_recall': float(lr_rec),
+            'dataset_size': len(df),
+            'spam_count': int(df['label_num'].sum()),
+            'ham_count': int((df['label_num'] == 0).sum()),
+        }
+
+    # ------------------------------------------------------------------
+    # Load saved pretrained model from disk
+    # ------------------------------------------------------------------
+    def load_pretrained(self):
+        if not os.path.exists(PRETRAINED_MODEL_PATH):
+            return False
+        with open(PRETRAINED_MODEL_PATH, 'rb') as f:
+            data = pickle.load(f)
+        self.vectorizer = data['vectorizer']
+        self.nb_classifier = data['nb']
+        self.lr_classifier = data['lr']
+        self.is_trained = True
+        self.phase = 'pretrained'
         
-        return classify_sms_real_time(message, self.vectorizer, self.nb_classifier, self.lr_classifier)
+        # Load metrics if available (for backward compatibility)
+        self.metrics = data.get('metrics', {})
+        
+        print("Pretrained model loaded from disk.")
+        return True
 
+    def _save_model(self):
+        with open(PRETRAINED_MODEL_PATH, 'wb') as f:
+            pickle.dump({
+                'vectorizer': self.vectorizer,
+                'nb': self.nb_classifier,
+                'lr': self.lr_classifier,
+                'metrics': getattr(self, 'metrics', {}),
+            }, f)
 
-def main():
-    """
-    Main function to execute the spam classification pipeline
-    """
-    print("=" * 60)
-    print("Real-Time Spam Message Classification Using Machine Learning")
-    print("=" * 60)
-    
-    # Initialize the spam classifier
-    classifier = SpamClassifier()
-    
-    # Train the models
-    nb_accuracy, lr_accuracy = classifier.train()
-    
-    print("\n" + "=" * 60)
-    print("VIVA EXAMINATION EXPLANATIONS")
-    print("=" * 60)
-    
-    print("\n1. DATA PREPROCESSING:")
-    print("   - Text converted to lowercase to ensure uniformity")
-    print("   - Special characters and digits removed to focus on meaningful words")
-    print("   - Stopwords removed to reduce noise in the data")
-    print("   - Tokenization performed to split text into individual words")
-    
-    print("\n2. FEATURE EXTRACTION (TF-IDF):")
-    print("   - TF-IDF (Term Frequency-Inverse Document Frequency) converts text to numerical features")
-    print("   - TF measures how frequently a word appears in a document")
-    print("   - IDF measures how important a word is across the entire corpus")
-    print("   - Higher weight given to rare but meaningful words")
-    
-    print("\n3. NAIVE BAYES CLASSIFIER:")
-    print("   - Based on Bayes' theorem with assumption of feature independence")
-    print("   - Calculates probability of each class given the features")
-    print("   - Works well for text classification tasks")
-    print("   - Formula: P(class|features) = P(features|class) * P(class) / P(features)")
-    
-    print("\n4. LOGISTIC REGRESSION:")
-    print("   - Linear model for binary classification")
-    print("   - Uses sigmoid function to map predictions to probabilities")
-    print("   - Optimizes weights to minimize logistic loss function")
-    
-    print("\n5. MODEL EVALUATION METRICS:")
-    print("   - Accuracy: (TP + TN) / (TP + TN + FP + FN)")
-    print("   - Precision: TP / (TP + FP) - Measures exactness")
-    print("   - Recall: TP / (TP + FN) - Measures completeness")
-    print("   - Confusion Matrix: Shows true/false positives and negatives")
-    
-    print("\n6. WHY THESE TECHNIQUES ARE SUITABLE FOR SPAM DETECTION:")
-    print("   - Text classification problem requires preprocessing and feature extraction")
-    print("   - Naive Bayes is effective for text classification with high dimensionality")
-    print("   - TF-IDF captures important words that distinguish spam from ham")
-    print("   - Both models are interpretable and efficient for this task")
-    
-    print("\n7. REAL-TIME PREDICTION SYSTEM:")
-    print("   - The system can classify new SMS messages in real-time")
-    print("   - After training, models can be reused without retraining")
-    print("   - Provides both spam classification and confidence scores")
-    
-    print("\nSystem ready! You can now classify new SMS messages.")
-    print("Example of how to use for real-time prediction:")
-    print("result = classifier.predict('Your SMS message here')")
-    
-    # Example usage
-    print("\nTo test real-time prediction, you can call:")
-    print("classifier.predict('Your SMS message')")
+    def pretrained_model_exists(self):
+        return os.path.exists(PRETRAINED_MODEL_PATH)
 
-if __name__ == "__main__":
-    main()
+    # ------------------------------------------------------------------
+    # Predict a single message
+    # ------------------------------------------------------------------
+    def predict(self, message):
+        if not self.is_trained:
+            raise Exception("Model not trained yet.")
+        processed = preprocess_text(message)
+        vec = self.vectorizer.transform([processed])
+
+        nb_pred = self.nb_classifier.predict(vec)[0]
+        nb_prob = self.nb_classifier.predict_proba(vec)[0]
+
+        lr_pred = self.lr_classifier.predict(vec)[0]
+        lr_prob = self.lr_classifier.predict_proba(vec)[0]
+
+        return {
+            'message': message,
+            'naive_bayes_result': 'Spam' if nb_pred == 1 else 'Not Spam',
+            'logistic_regression_result': 'Spam' if lr_pred == 1 else 'Not Spam',
+            'naive_bayes_confidence': float(max(nb_prob)),
+            'logistic_regression_confidence': float(max(lr_prob)),
+            'phase': self.phase,
+        }
