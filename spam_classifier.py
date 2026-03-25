@@ -129,6 +129,17 @@ class SpamClassifier:
 
         self.is_trained = True
         self.phase = 'pretrained'
+        self.metrics = {
+            'nb_accuracy': float(nb_acc),
+            'lr_accuracy': float(lr_acc),
+            'nb_precision': float(nb_prec),
+            'lr_precision': float(lr_prec),
+            'nb_recall': float(nb_rec),
+            'lr_recall': float(lr_rec),
+            'dataset_size': len(df),
+            'spam_count': int(df['label_num'].sum()),
+            'ham_count': int((df['label_num'] == 0).sum()),
+        }
 
         log("Saving pretrained model to disk...", 98)
         self._save_model()
@@ -223,6 +234,7 @@ class SpamClassifier:
         
         # Load metrics if available (for backward compatibility)
         self.metrics = data.get('metrics', {})
+        return True   # already present
         
         print("Pretrained model loaded from disk.")
         return True

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>SMS Spam Classifier — Two-Phase ML Demo</title>
+<title>SMS Spam Classifier — Live ML Demo</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
 <style>
 :root{
@@ -102,13 +102,73 @@ body{
   position:relative;
 }
 
-/* ── phase strip ── */
+/* ── model ready banner ── */
+.model-banner{
+  border:var(--border);
+  box-shadow:var(--shadow);
+  background:var(--green);
+  color:white;
+  padding:20px 28px;
+  margin-bottom:32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:16px;
+}
+.model-banner.not-ready{
+  background:var(--red);
+}
+.model-banner-left{
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+.model-banner-icon{
+  font-size:2rem;
+  line-height:1;
+}
+.model-banner-title{
+  font-family:'Syne',sans-serif;
+  font-size:1.1rem;
+  font-weight:800;
+  letter-spacing:2px;
+  text-transform:uppercase;
+}
+.model-banner-sub{
+  font-size:.7rem;
+  opacity:.85;
+  margin-top:3px;
+  letter-spacing:1px;
+}
+.model-banner-metrics{
+  display:flex;
+  gap:24px;
+  flex-wrap:wrap;
+}
+.banner-metric{
+  text-align:center;
+}
+.banner-metric .val{
+  font-family:'Syne',sans-serif;
+  font-size:1.5rem;
+  font-weight:800;
+  line-height:1;
+}
+.banner-metric .lbl{
+  font-size:.6rem;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  opacity:.8;
+  margin-top:2px;
+}
+
+/* ── phase strip (2 phases now) ── */
 .phase-strip{
   display:grid;
-  grid-template-columns:1fr 40px 1fr 40px 1fr;
+  grid-template-columns:1fr 40px 1fr;
   align-items:center;
   margin-bottom:32px;
-  gap:0;
 }
 .phase-node{
   border:var(--border);
@@ -274,7 +334,6 @@ body{
 .btn-primary:hover:not(:disabled){background:#222;}
 .btn-green{background:var(--green);color:white;box-shadow:var(--shadow);}
 .btn-green:hover:not(:disabled){background:#155e38;}
-.btn-red{background:var(--red);color:white;box-shadow:var(--shadow);}
 .btn-ghost{background:white;color:var(--ink);box-shadow:var(--shadow);}
 .btn-ghost:hover:not(:disabled){background:var(--cream);}
 .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;}
@@ -357,38 +416,7 @@ body{
 .phase-badge.pre{border-color:var(--blue);color:var(--blue);}
 .phase-badge.live{border-color:var(--green);color:var(--green);}
 
-/* ── notice ── */
-.notice{
-  border-left:4px solid var(--amber);
-  background:#fffbf0;
-  padding:14px 18px;
-  font-size:.78rem;
-  line-height:1.8;
-  margin-bottom:20px;
-}
-.notice strong{color:var(--amber);}
-
 .hidden{display:none!important;}
-
-/* ── datasets info ── */
-.dataset-table{width:100%;border-collapse:collapse;font-size:.78rem;}
-.dataset-table th{
-  background:var(--ink);color:var(--paper);
-  padding:10px 14px;text-align:left;font-weight:700;letter-spacing:1px;
-}
-.dataset-table td{
-  padding:10px 14px;border-bottom:1px solid var(--cream);
-}
-.dataset-table tr:nth-child(even) td{background:var(--cream);}
-.dataset-table .tag-pre{
-  background:var(--blue);color:white;font-size:.6rem;
-  padding:2px 8px;letter-spacing:1px;
-}
-.dataset-table .tag-live{
-  background:var(--green);color:white;font-size:.6rem;
-  padding:2px 8px;letter-spacing:1px;
-}
-a{color:var(--blue);}
 
 @media(max-width:640px){
   .phase-strip{grid-template-columns:1fr;gap:4px;}
@@ -396,6 +424,7 @@ a{color:var(--blue);}
   .result-grid{grid-template-columns:1fr;}
   .metrics-row{grid-template-columns:1fr 1fr;}
   .hero h1{font-size:1.8rem;}
+  .model-banner{flex-direction:column;align-items:flex-start;}
 }
 </style>
 </head>
@@ -411,153 +440,63 @@ a{color:var(--blue);}
 
   <!-- Hero -->
   <div class="hero">
-    <h1>Two-Phase<br><span>Spam Detector</span></h1>
-    <p>Pre-train on a base dataset → Live retrain on new data → Classify any message in real time. A complete, demonstrable ML pipeline.</p>
+    <h1>Live <span>Spam</span><br>Detector</h1>
+    <p>Base model pre-trained offline. Upload a second dataset to retrain live, then classify any message in real time.</p>
   </div>
 
-  <!-- Phase strip -->
+  <!-- Model Ready Banner -->
+  <div class="model-banner not-ready" id="modelBanner">
+    <div class="model-banner-left">
+      <div class="model-banner-icon" id="bannerIcon">⚠️</div>
+      <div>
+        <div class="model-banner-title" id="bannerTitle">No Pretrained Model Found</div>
+        <div class="model-banner-sub" id="bannerSub">Run: python pretrain.py &lt;dataset&gt; in terminal first</div>
+      </div>
+    </div>
+    <div class="model-banner-metrics hidden" id="bannerMetrics">
+      <div class="banner-metric">
+        <div class="val" id="bnNbAcc">—</div>
+        <div class="lbl">NB Accuracy</div>
+      </div>
+      <div class="banner-metric">
+        <div class="val" id="bnLrAcc">—</div>
+        <div class="lbl">LR Accuracy</div>
+      </div>
+      <div class="banner-metric">
+        <div class="val" id="bnSize">—</div>
+        <div class="lbl">Trained On</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase strip (2 phases) -->
   <div class="phase-strip">
-    <div class="phase-node" id="pn1">
+    <div class="phase-node done" id="pn1">
       <div class="num">01</div>
-      <div class="label">Pre-Train</div>
+      <div class="label">Pre-Train (CLI)</div>
     </div>
     <div class="phase-arrow">→</div>
     <div class="phase-node" id="pn2">
       <div class="num">02</div>
-      <div class="label">Live Train</div>
-    </div>
-    <div class="phase-arrow">→</div>
-    <div class="phase-node" id="pn3">
-      <div class="num">03</div>
-      <div class="label">Predict</div>
+      <div class="label">Live Train + Predict</div>
     </div>
   </div>
 
-  <!-- Dataset reference -->
+  <!-- Live Train Card -->
   <div class="card">
     <div class="card-head">
-      Recommended Datasets
-      <span class="tag">Download & Upload Below</span>
-    </div>
-    <div class="card-body">
-      <div class="notice">
-        <strong>Note:</strong> Download the datasets from the links below, then upload them using the panels. Both CSV and the UCI tab-separated format are supported automatically.
-      </div>
-      <table class="dataset-table">
-        <thead>
-          <tr>
-            <th>Dataset</th>
-            <th>Use For</th>
-            <th>Size</th>
-            <th>Link</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>UCI SMS Spam Collection</strong><br><small>Classic benchmark, tab-separated</small></td>
-            <td><span class="tag-pre">PRE-TRAIN</span></td>
-            <td>5,574 msgs</td>
-            <td><a href="https://archive.ics.uci.edu/dataset/228/sms+spam+collection" target="_blank">UCI ML Repo ↗</a></td>
-          </tr>
-          <tr>
-            <td><strong>Kaggle SMS Spam</strong><br><small>CSV format, same content</small></td>
-            <td><span class="tag-pre">PRE-TRAIN</span></td>
-            <td>5,574 msgs</td>
-            <td><a href="https://www.kaggle.com/datasets/uciml/sms-spam-collection-dataset" target="_blank">Kaggle ↗</a></td>
-          </tr>
-          <tr>
-            <td><strong>Enron Spam Dataset</strong><br><small>Email spam, convert to CSV</small></td>
-            <td><span class="tag-live">LIVE TRAIN</span></td>
-            <td>~33,000 msgs</td>
-            <td><a href="https://www.kaggle.com/datasets/wanderfj/enron-spam" target="_blank">Kaggle ↗</a></td>
-          </tr>
-          <tr>
-            <td><strong>SpamAssassin Public Corpus</strong><br><small>Email spam dataset</small></td>
-            <td><span class="tag-live">LIVE TRAIN</span></td>
-            <td>~6,000 msgs</td>
-            <td><a href="https://spamassassin.apache.org/old/publiccorpus/" target="_blank">Apache ↗</a></td>
-          </tr>
-          <tr>
-            <td><strong>Ling-Spam Dataset</strong><br><small>Linguistics newsgroup spam</small></td>
-            <td><span class="tag-live">LIVE TRAIN</span></td>
-            <td>~2,900 msgs</td>
-            <td><a href="https://www.kaggle.com/datasets/mandygu/lingspam-dataset" target="_blank">Kaggle ↗</a></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Phase 1: Pre-train -->
-  <div class="card">
-    <div class="card-head">
-      Phase 01 — Pre-Train Model
-      <span class="tag">Upload Base Dataset</span>
-    </div>
-    <div class="card-body">
-      <p style="font-size:.8rem;color:#555;margin-bottom:16px;line-height:1.7;">
-        Upload your base dataset (UCI SMS Spam Collection or similar). The model trains on it and saves to disk. Next time you open the app, this step is skipped automatically.
-      </p>
-
-      <div class="upload-zone" id="pretrainZone">
-        <input type="file" id="pretrainFile" accept=".csv,.txt"/>
-        <div class="icon">📂</div>
-        <p>Drop your dataset here or click to browse<br><small>Supports .csv (Kaggle format) or tab-separated .txt (UCI format)</small></p>
-        <div class="file-name" id="pretrainFileName"></div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" id="pretrainBtn" disabled>▶ Start Pre-Training</button>
-        <button class="btn btn-ghost" id="resetBtn">↻ Full Reset</button>
-      </div>
-
-      <div class="progress-wrap" id="pretrainProgress" style="display:none">
-        <div class="progress-label">
-          <span id="pretrainStep">Initializing...</span>
-          <span id="pretrainPct">0%</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill blue" id="pretrainFill"></div>
-        </div>
-        <div class="step-text" id="pretrainStepSub"></div>
-      </div>
-
-      <div id="pretrainMetrics" class="hidden">
-        <div class="metrics-row">
-          <div class="metric-box nb">
-            <div class="val" id="pt_nb_acc">—</div>
-            <div class="lbl">NB Accuracy</div>
-          </div>
-          <div class="metric-box lr">
-            <div class="val" id="pt_lr_acc">—</div>
-            <div class="lbl">LR Accuracy</div>
-          </div>
-          <div class="metric-box data">
-            <div class="val" id="pt_size">—</div>
-            <div class="lbl">Messages</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="log-box hidden" id="pretrainLog"></div>
-    </div>
-  </div>
-
-  <!-- Phase 2: Live Train -->
-  <div class="card">
-    <div class="card-head">
-      Phase 02 — Live Retrain
+      Live Retrain
       <span class="tag">Upload Second Dataset</span>
     </div>
     <div class="card-body">
       <p style="font-size:.8rem;color:#555;margin-bottom:16px;line-height:1.7;">
-        Upload a different dataset. The model updates its weights live using the existing vocabulary. Watch the accuracy shift — this proves the model is genuinely learning.
+        Upload a different dataset to update the model's weights live. Watch the accuracy shift in real time — this proves the model is genuinely learning new patterns.
       </p>
 
       <div class="upload-zone" id="liveZone">
         <input type="file" id="liveFile" accept=".csv,.txt"/>
         <div class="icon">⚡</div>
-        <p>Drop second dataset here or click to browse<br><small>Must have 'label' and 'message' / 'text' columns, or v1/v2 (Kaggle)</small></p>
+        <p>Drop second dataset here or click to browse<br><small>Supports CSV (label/message columns) or tab-separated UCI format</small></p>
         <div class="file-name" id="liveFileName"></div>
       </div>
 
@@ -573,7 +512,6 @@ a{color:var(--blue);}
         <div class="progress-track">
           <div class="progress-fill green" id="liveFill"></div>
         </div>
-        <div class="step-text" id="liveStepSub"></div>
       </div>
 
       <div id="liveMetrics" class="hidden">
@@ -597,10 +535,10 @@ a{color:var(--blue);}
     </div>
   </div>
 
-  <!-- Phase 3: Predict -->
+  <!-- Predict Card -->
   <div class="card">
     <div class="card-head">
-      Phase 03 — Real-Time Prediction
+      Real-Time Prediction
       <span class="tag">Live Demo</span>
     </div>
     <div class="card-body">
@@ -662,205 +600,170 @@ a{color:var(--blue);}
 const $ = id => document.getElementById(id);
 
 let pollTimer = null;
-let lastPhase = '';
 
-// ── File pickers ────────────────────────────────────────────────────────
-function setupUpload(inputId, zoneId, nameId, btnId){
-  const inp = $(inputId), zone = $(zoneId), nm = $(nameId), btn = $(btnId);
-  inp.addEventListener('change', ()=>{
-    if(inp.files[0]){ nm.textContent = '📄 '+inp.files[0].name; btn.disabled=false; }
-  });
-  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('drag'); });
-  zone.addEventListener('dragleave', ()=> zone.classList.remove('drag'));
-  zone.addEventListener('drop', e=>{
-    e.preventDefault(); zone.classList.remove('drag');
-    const f = e.dataTransfer.files[0];
-    if(f){ inp.files = e.dataTransfer.files; nm.textContent='📄 '+f.name; btn.disabled=false; }
-  });
-}
-setupUpload('pretrainFile','pretrainZone','pretrainFileName','pretrainBtn');
-setupUpload('liveFile','liveZone','liveFileName','liveBtn');
+// ── File picker ──────────────────────────────────────────────────────────
+const liveInp = $('liveFile'), liveZone = $('liveZone');
+liveInp.addEventListener('change', () => {
+  if (liveInp.files[0]) $('liveFileName').textContent = '📄 ' + liveInp.files[0].name;
+});
+liveZone.addEventListener('dragover', e => { e.preventDefault(); liveZone.classList.add('drag'); });
+liveZone.addEventListener('dragleave', () => liveZone.classList.remove('drag'));
+liveZone.addEventListener('drop', e => {
+  e.preventDefault(); liveZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) { liveInp.files = e.dataTransfer.files; $('liveFileName').textContent = '📄 ' + f.name; }
+});
 
-// ── Upload helpers ──────────────────────────────────────────────────────
-async function uploadAndPost(endpoint, fileInputId){
-  const f = $(fileInputId).files[0];
-  if(!f) return;
+// ── Buttons ───────────────────────────────────────────────────────────────
+$('liveBtn').onclick = async () => {
+  const f = liveInp.files[0];
+  if (!f) return;
   const fd = new FormData();
   fd.append('file', f);
-  await fetch(endpoint, { method:'POST', body:fd });
-}
+  await fetch('/api/live_train', { method: 'POST', body: fd });
+  startPoll();
+};
 
-// ── Buttons ─────────────────────────────────────────────────────────────
-$('pretrainBtn').onclick = async ()=>{
-  await uploadAndPost('/api/pretrain','pretrainFile');
-  startPoll();
-};
-$('liveBtn').onclick = async ()=>{
-  await uploadAndPost('/api/live_train','liveFile');
-  startPoll();
-};
-$('resetBtn').onclick = async ()=>{
-  if(!confirm('Reset everything? The saved pretrained model will be deleted.')) return;
-  await fetch('/api/reset',{method:'POST'});
-  location.reload();
-};
 $('predictBtn').onclick = predict;
-$('clearBtn').onclick = ()=>{
-  $('msgInput').value='';
+$('clearBtn').onclick = () => {
+  $('msgInput').value = '';
   $('resultSection').classList.add('hidden');
 };
 
-document.querySelectorAll('.qbtn').forEach(b=>{
-  b.onclick = ()=>{ $('msgInput').value = b.dataset.msg; };
+document.querySelectorAll('.qbtn').forEach(b => {
+  b.onclick = () => { $('msgInput').value = b.dataset.msg; };
 });
 
-// ── Poll status ──────────────────────────────────────────────────────────
-function startPoll(){
-  if(pollTimer) return;
+// ── Poll ──────────────────────────────────────────────────────────────────
+function startPoll() {
+  if (pollTimer) return;
   pollTimer = setInterval(fetchStatus, 800);
 }
-function stopPoll(){ clearInterval(pollTimer); pollTimer=null; }
+function stopPoll() { clearInterval(pollTimer); pollTimer = null; }
 
-async function fetchStatus(){
-  try{
+async function fetchStatus() {
+  try {
     const r = await fetch('/api/status');
     const s = await r.json();
     applyState(s);
-    if(!['pretraining','live_training'].includes(s.phase)) stopPoll();
-  }catch(e){ console.error(e); }
+    if (s.phase !== 'live_training') stopPoll();
+  } catch (e) { console.error(e); }
 }
-fetchStatus(); // initial
+fetchStatus();
 
-function applyState(s){
+function applyState(s) {
   const ph = s.phase;
 
   // Status pill
-  const pill = $('statusPill');
-  const labels = {
-    idle:'● IDLE', pretraining:'◉ PRE-TRAINING…',
-    pretrained:'● MODEL READY', live_training:'◉ LIVE TRAINING…',
-    live_trained:'● LIVE TRAINED'
+  const pills = {
+    idle: '● IDLE', pretrained: '● MODEL READY',
+    live_training: '◉ LIVE TRAINING…', live_trained: '● LIVE TRAINED'
   };
-  pill.textContent = labels[ph] || '● '+ph.toUpperCase();
+  $('statusPill').textContent = pills[ph] || '● ' + ph.toUpperCase();
+
+  // Model ready banner
+  const banner = $('modelBanner');
+  if (s.is_trained) {
+    banner.classList.remove('not-ready');
+    $('bannerIcon').textContent = '✅';
+    $('bannerTitle').textContent = 'Pretrained Model Ready';
+    $('bannerSub').textContent = 'Base model loaded from disk — ready to classify or live retrain';
+    const m = s.pretrain_metrics;
+    if (m && m.nb_accuracy) {
+      $('bannerMetrics').classList.remove('hidden');
+      $('bnNbAcc').textContent = pct(m.nb_accuracy);
+      $('bnLrAcc').textContent = pct(m.lr_accuracy);
+      $('bnSize').textContent = m.dataset_size;
+    }
+  } else {
+    banner.classList.add('not-ready');
+    $('bannerIcon').textContent = '⚠️';
+    $('bannerTitle').textContent = 'No Pretrained Model Found';
+    $('bannerSub').textContent = 'Run: python pretrain.py <dataset> in terminal first';
+  }
 
   // Phase nodes
-  const done = cls => { cls.classList.remove('active'); cls.classList.add('done'); };
-  const active = cls => { cls.classList.add('active'); cls.classList.remove('done'); };
-  const reset = cls => { cls.classList.remove('active','done'); };
+  $('pn1').className = 'phase-node done'; // always done (CLI handles it)
+  $('pn2').className = 'phase-node' +
+    (ph === 'live_training' ? ' active' : ph === 'live_trained' ? ' done' : '');
 
-  reset($('pn1')); reset($('pn2')); reset($('pn3'));
-
-  if(ph==='pretraining') active($('pn1'));
-  if(ph==='pretrained'){ done($('pn1')); }
-  if(ph==='live_training'){ done($('pn1')); active($('pn2')); }
-  if(ph==='live_trained'){ done($('pn1')); done($('pn2')); done($('pn3')); }
-
-  // Pre-train progress
-  if(['pretraining','pretrained'].includes(ph) || s.pretrain_metrics?.nb_accuracy){
-    $('pretrainProgress').style.display='block';
-    $('pretrainStep').textContent = s.current_step||'';
-    $('pretrainPct').textContent = s.progress+'%';
-    $('pretrainFill').style.width = s.progress+'%';
-  }
-  if(ph==='pretraining'){
-    showLog('pretrainLog', s.logs);
-  }
-  if(s.pretrain_metrics?.nb_accuracy){
-    $('pretrainMetrics').classList.remove('hidden');
-    $('pt_nb_acc').textContent = pct(s.pretrain_metrics.nb_accuracy);
-    $('pt_lr_acc').textContent = pct(s.pretrain_metrics.lr_accuracy);
-    $('pt_size').textContent = s.pretrain_metrics.dataset_size;
-  }
-
-  // Live progress
-  if(['live_training','live_trained'].includes(ph)){
-    $('liveProgress').style.display='block';
-    $('liveStep').textContent = s.current_step||'';
-    $('livePct').textContent = s.progress+'%';
-    $('liveFill').style.width = s.progress+'%';
+  // Live train progress
+  if (['live_training', 'live_trained'].includes(ph)) {
+    $('liveProgress').style.display = 'block';
+    $('liveStep').textContent = s.current_step || '';
+    $('livePct').textContent = s.progress + '%';
+    $('liveFill').style.width = s.progress + '%';
     showLog('liveLog', s.logs);
   }
-  if(s.live_metrics?.nb_accuracy){
+  if (s.live_metrics && s.live_metrics.nb_accuracy) {
     $('liveMetrics').classList.remove('hidden');
     $('lt_nb_acc').textContent = pct(s.live_metrics.nb_accuracy);
     $('lt_lr_acc').textContent = pct(s.live_metrics.lr_accuracy);
     $('lt_size').textContent = s.live_metrics.dataset_size;
   }
 
-  // Button states
-  const busy = ['pretraining','live_training'].includes(ph);
-  $('pretrainBtn').disabled = busy || !!$('pretrainFile').files[0]===false;
-  $('liveBtn').disabled = busy || !s.is_trained || !!$('liveFile').files[0]===false;
+  // Buttons
+  const busy = ph === 'live_training';
+  const hasFile = !!liveInp.files[0];
+  $('liveBtn').disabled = busy || !s.is_trained || !hasFile;
   $('predictBtn').disabled = !s.is_trained;
-
-  // Re-check file inputs for buttons
-  if($('pretrainFile').files[0] && !busy) $('pretrainBtn').disabled=false;
-  if($('liveFile').files[0] && s.is_trained && !busy) $('liveBtn').disabled=false;
 }
 
-function showLog(id, logs){
-  if(!logs||!logs.length) return;
+function showLog(id, logs) {
+  if (!logs || !logs.length) return;
   const box = $(id);
   box.classList.remove('hidden');
-  box.innerHTML = logs.map(l=>{
-    const cls = l.includes('ERROR')?'err':'ok';
-    return `<div class="log-entry ${cls}">> ${l}</div>`;
-  }).join('');
+  box.innerHTML = logs.map(l =>
+    `<div class="log-entry ${l.includes('ERROR') ? 'err' : 'ok'}"> > ${l}</div>`
+  ).join('');
   box.scrollTop = box.scrollHeight;
 }
 
-function pct(v){ return (v*100).toFixed(2)+'%'; }
+function pct(v) { return (v * 100).toFixed(2) + '%'; }
 
-// ── Predict ──────────────────────────────────────────────────────────────
-async function predict(){
+// ── Predict ───────────────────────────────────────────────────────────────
+async function predict() {
   const msg = $('msgInput').value.trim();
-  if(!msg) return;
-
-  $('predictBtn').textContent='⏳ Classifying...';
-  $('predictBtn').disabled=true;
-
-  try{
-    const r = await fetch('/api/predict',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({message:msg})
+  if (!msg) return;
+  $('predictBtn').textContent = '⏳ Classifying...';
+  $('predictBtn').disabled = true;
+  try {
+    const r = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
     });
     const d = await r.json();
-    if(d.error){ alert(d.error); return; }
+    if (d.error) { alert(d.error); return; }
     renderResult(d);
-  }catch(e){ alert('Prediction failed: '+e); }
-  finally{
-    $('predictBtn').textContent='🔍 Classify Message';
-    $('predictBtn').disabled=false;
+  } catch (e) { alert('Prediction failed: ' + e); }
+  finally {
+    $('predictBtn').textContent = '🔍 Classify Message';
+    $('predictBtn').disabled = false;
   }
 }
 
-function renderResult(d){
+function renderResult(d) {
   $('resultSection').classList.remove('hidden');
-
-  setVerdict('nbVerdict','nbConfBar','nbConfTxt',
-    d.naive_bayes_result, d.naive_bayes_confidence);
-  setVerdict('lrVerdict','lrConfBar','lrConfTxt',
-    d.logistic_regression_result, d.logistic_regression_confidence);
-
-  const badge = d.phase==='live'?'live':'pre';
-  const label = d.phase==='live'?'After Live Training':'Pre-Trained Model';
-  [$('nbPhaseBadge'),$('lrPhaseBadge')].forEach(b=>{
-    b.textContent=label; b.className='phase-badge '+badge;
+  setVerdict('nbVerdict', 'nbConfBar', 'nbConfTxt', d.naive_bayes_result, d.naive_bayes_confidence);
+  setVerdict('lrVerdict', 'lrConfBar', 'lrConfTxt', d.logistic_regression_result, d.logistic_regression_confidence);
+  const badge = d.phase === 'live' ? 'live' : 'pre';
+  const label = d.phase === 'live' ? 'After Live Training' : 'Pre-Trained Model';
+  [$('nbPhaseBadge'), $('lrPhaseBadge')].forEach(b => {
+    b.textContent = label; b.className = 'phase-badge ' + badge;
   });
-
-  $('resultSection').scrollIntoView({behavior:'smooth',block:'nearest'});
+  $('resultSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function setVerdict(vId, barId, txtId, label, conf){
-  const isSpam = label==='Spam';
+function setVerdict(vId, barId, txtId, label, conf) {
+  const isSpam = label === 'Spam';
   const el = $(vId);
   el.textContent = label;
-  el.className = 'result-verdict '+(isSpam?'spam':'ham');
-  const pctVal = (conf*100).toFixed(1)+'%';
-  $(txtId).textContent = pctVal;
-  $(barId).style.width = pctVal;
-  $(barId).className = 'conf-fill '+(isSpam?'spam':'ham');
+  el.className = 'result-verdict ' + (isSpam ? 'spam' : 'ham');
+  const p = (conf * 100).toFixed(1) + '%';
+  $(txtId).textContent = p;
+  $(barId).style.width = p;
+  $(barId).className = 'conf-fill ' + (isSpam ? 'spam' : 'ham');
 }
 </script>
 </body>
