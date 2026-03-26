@@ -604,14 +604,21 @@ let pollTimer = null;
 // ── File picker ──────────────────────────────────────────────────────────
 const liveInp = $('liveFile'), liveZone = $('liveZone');
 liveInp.addEventListener('change', () => {
-  if (liveInp.files[0]) $('liveFileName').textContent = '📄 ' + liveInp.files[0].name;
+  if (liveInp.files[0]) {
+    $('liveFileName').textContent = '📄 ' + liveInp.files[0].name;
+    applyState(window.currentState || {}); // Trigger button enable
+  }
 });
 liveZone.addEventListener('dragover', e => { e.preventDefault(); liveZone.classList.add('drag'); });
 liveZone.addEventListener('dragleave', () => liveZone.classList.remove('drag'));
 liveZone.addEventListener('drop', e => {
   e.preventDefault(); liveZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (f) { liveInp.files = e.dataTransfer.files; $('liveFileName').textContent = '📄 ' + f.name; }
+  if (f) { 
+    liveInp.files = e.dataTransfer.files; 
+    $('liveFileName').textContent = '📄 ' + f.name;
+    applyState(window.currentState || {}); // Trigger button enable
+  }
 });
 
 // ── Buttons ───────────────────────────────────────────────────────────────
@@ -645,6 +652,7 @@ async function fetchStatus() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
+    window.currentState = s; // Store for immediate use
     applyState(s);
     if (s.phase !== 'live_training') stopPoll();
   } catch (e) { console.error(e); }

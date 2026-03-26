@@ -10,8 +10,6 @@ venv/
 dist/
 build/
 
-# Dataset
-SMSSpamCollection
 
 # IDE
 .vscode/
